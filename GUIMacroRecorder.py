@@ -8,8 +8,6 @@ import ctypes
 import pickle
 from io import BytesIO
 
-# The following libraries are required for the system tray icon feature.
-# You can install them using: pip install pystray Pillow
 try:
     from PIL import Image, ImageTk
     from pystray import MenuItem as item, Icon as icon
@@ -17,18 +15,14 @@ try:
 except ImportError:
     TRAY_SUPPORTED = False
 
-# --- DPI Awareness (Windows Specific) ---
 try:
     if sys.platform == "win32":
         ctypes.windll.user32.SetProcessDPIAware()
 except AttributeError:
     pass
 
-# --- Icon File ---
-# The application will look for an icon file named "app_icon.ico" in the same directory.
 ICON_FILE = "app_icon.ico"
 
-# --- Globals ---
 recorded_events = []
 is_recording = False
 is_playing = False
@@ -36,19 +30,14 @@ start_time = 0
 SETTINGS_FILE = "recorder_settings.dat"
 tray_icon = None
 
-# --- Hotkey Configuration ---
+
 hotkey_listener = None
-# Default hotkeys
 hotkeys = {
     'record': '<f9>',
     'play': '<f10>',
 }
-# A temporary listener for when we are setting a new hotkey
 setting_hotkey_listener = None
 pressed_keys = set()
-
-
-# --- Event Recording Functions ---
 
 def on_move(x, y):
     """Callback function to record mouse movement."""
@@ -81,8 +70,6 @@ def on_key_release(key):
         elapsed = time.monotonic() - start_time
         recorded_events.append((elapsed, 'key_release', key))
 
-# --- Core Logic ---
-
 def record_thread_func():
     """
     This function runs in a separate thread to listen for and record mouse and keyboard events.
@@ -111,11 +98,6 @@ def record_thread_func():
         
     mouse_listener.stop()
     keyboard_listener.stop()
-    
-    # The problematic logic that tried to remove the last click has been removed.
-    # To end a recording accurately, the user should use the hotkey, which doesn't
-    # add a final, unwanted event to the recording list. This preserves any
-    # intentional pauses at the end of the action sequence.
             
     update_status(f"Recording stopped. {len(recorded_events)} events captured.")
     record_button.config(state=tk.NORMAL)
@@ -141,9 +123,8 @@ def play_thread_func():
     mouse_controller = mouse.Controller()
     keyboard_controller = keyboard.Controller()
 
-    # Get the playback speed from the GUI control
     speed = speed_multiplier.get()
-    if speed <= 0: # Safety check to prevent division by zero or negative speed
+    if speed <= 0: 
         speed = 1
     
     update_status(f"Playing back at {speed}x speed... Press F10 to stop.")
@@ -167,9 +148,6 @@ def play_thread_func():
                 break
                 
             event_time, event_type, details = event
-            
-            # Key change: Scale the event's timestamp by the speed multiplier
-            # This determines when the event *should* occur in the accelerated timeline.
             accelerated_event_time = event_time / speed
             
             current_time_offset = time.monotonic() - playback_start_time
@@ -178,7 +156,7 @@ def play_thread_func():
             if sleep_time > 0:
                 time.sleep(sleep_time)
 
-            if not is_playing: # Check again after sleeping, in case the user stopped it.
+            if not is_playing:
                 break
 
             if event_type == 'move':
@@ -199,7 +177,6 @@ def play_thread_func():
             elif event_type == 'key_release':
                 keyboard_controller.release(details)
         else:
-            # Only continue looping if should_loop is True AND is_playing is still True
             if should_loop and is_playing:
                 update_status(f"Looping playback... Loop #{loop_count}")
                 continue
@@ -217,14 +194,11 @@ def play_thread_func():
     save_button.config(state=tk.NORMAL if recorded_events else tk.DISABLED)
     load_button.config(state=tk.NORMAL)
 
-# --- Hotkey and UI Functions ---
-
 def toggle_record():
     """Starts or stops recording based on current state."""
     if is_recording:
         stop_action()
     else:
-        # Prevent starting a new recording if playback is happening
         if not is_playing:
             start_recording()
 
@@ -233,7 +207,6 @@ def toggle_play():
     if is_playing:
         stop_action()
     else:
-        # Prevent starting playback if recording is happening
         if not is_recording:
             start_playing()
 
@@ -295,15 +268,12 @@ def load_recording():
 def update_status(message):
     status_label.config(text=message)
 
-# --- Settings Persistence ---
-
 def save_settings():
     """Saves the current hotkey configuration to a file."""
     try:
         with open(SETTINGS_FILE, 'wb') as f:
             pickle.dump(hotkeys, f)
     except Exception as e:
-        # Silently fail, as this isn't a critical error to show to the user.
         print(f"Error saving settings: {e}")
 
 def load_settings():
@@ -312,18 +282,12 @@ def load_settings():
     try:
         with open(SETTINGS_FILE, 'rb') as f:
             loaded_hotkeys = pickle.load(f)
-            # A simple check to ensure the loaded data is in the expected format
             if isinstance(loaded_hotkeys, dict) and 'record' in loaded_hotkeys and 'play' in loaded_hotkeys:
                 hotkeys = loaded_hotkeys
     except FileNotFoundError:
-        # This is expected on the first run, so we just use the defaults.
         pass
     except Exception as e:
-        # If the file is corrupted or unreadable, defaults will be used.
         print(f"Error loading settings: {e}")
-
-
-# --- Hotkey Settings Window ---
 
 def get_key_str(key):
     """Formats a key object into a string for display."""
@@ -335,7 +299,6 @@ def get_key_str(key):
 
 def format_hotkey_string(keys):
     """Formats a set of keys into a pynput-compatible hotkey string."""
-    # pynput format is <modifier>+<modifier>+<key>
     modifiers = {'ctrl_l', 'ctrl_r', 'alt_l', 'alt_gr', 'shift_l', 'shift_r', 'cmd'}
     
     sorted_keys = sorted([k.name if hasattr(k, 'name') else k.char for k in keys if k is not None])
@@ -346,7 +309,6 @@ def format_hotkey_string(keys):
     if mod_str and key_str:
         return f"{mod_str}+{key_str}"
     elif key_str:
-        # For single keys like F9, format them correctly
         if len(key_str) > 1:
             return f"<{key_str}>"
         return key_str
@@ -365,19 +327,18 @@ def on_setting_release(key, action_type, button_to_update, window):
         display_str = hotkey_str.replace('<', '').replace('>', ' ').replace('+', ' + ').title()
         button_to_update.config(text=display_str)
         update_hotkey_listeners()
-        save_settings() # Save settings whenever a change is made
+        save_settings()
     
     pressed_keys.clear()
     if setting_hotkey_listener:
         setting_hotkey_listener.stop()
         setting_hotkey_listener = None
-    window.grab_set() # Regain focus
+    window.grab_set()
 
 def listen_for_hotkey(action_type, button_to_update, window):
     global setting_hotkey_listener
     button_to_update.config(text="Press a key...")
     pressed_keys.clear()
-    # Release focus to listen globally
     window.grab_release()
 
     setting_hotkey_listener = keyboard.Listener(
@@ -392,14 +353,11 @@ def open_hotkey_settings():
     settings_window.geometry("350x150")
     settings_window.configure(bg=BG_COLOR)
     settings_window.resizable(False, False)
-    settings_window.grab_set() # Modal window
-    # Set the same icon for the settings window
+    settings_window.grab_set()
     try:
-        # This will only work on Windows with an .ico file
         if sys.platform == "win32":
             settings_window.iconbitmap(ICON_FILE)
     except tk.TclError:
-        # Silently fail if the icon cannot be set
         pass
 
 
@@ -413,19 +371,14 @@ def open_hotkey_settings():
     play_hotkey_btn.grid(row=1, column=1, padx=10, pady=10)
     play_hotkey_btn.config(command=lambda: listen_for_hotkey('play', play_hotkey_btn, settings_window))
 
-# --- System Tray and Icon Functions ---
-
 def setup_icon():
     """Sets the application icon for the main window and taskbar."""
     try:
-        # For Windows, iconbitmap is the most reliable way to set the window icon.
         if sys.platform == "win32":
             root.iconbitmap(ICON_FILE)
-        # For other platforms, try using iconphoto with Pillow.
         else:
             if TRAY_SUPPORTED:
                 icon_image = Image.open(ICON_FILE)
-                # Keep a reference to prevent garbage collection
                 root.icon_photo = ImageTk.PhotoImage(icon_image)
                 root.iconphoto(True, root.icon_photo)
     except Exception as e:
@@ -450,7 +403,7 @@ def show_window(icon, item):
 def hide_window():
     """Hides the main window and shows the system tray icon."""
     if not TRAY_SUPPORTED:
-        on_closing() # Fallback to normal close if tray libs are missing
+        on_closing()
         return
         
     global tray_icon
@@ -459,12 +412,9 @@ def hide_window():
         image = Image.open(ICON_FILE)
         menu = (item('Show', show_window, default=True), item('Quit', quit_window))
         tray_icon = icon("Input Recorder", image, "Input Recorder", menu)
-        
-        # Run the icon in a separate thread so it doesn't block the GUI
         threading.Thread(target=tray_icon.run, daemon=True).start()
     except Exception as e:
         print(f"Failed to create tray icon from '{ICON_FILE}': {e}")
-        # If tray icon fails, quit the app to avoid being stuck in a hidden state.
         on_closing()
 
 
@@ -474,8 +424,6 @@ def on_closing():
     if hotkey_listener:
         hotkey_listener.stop()
     root.destroy()
-
-# --- Initial Setup ---
 
 def update_hotkey_listeners():
     global hotkey_listener
@@ -490,17 +438,14 @@ def update_hotkey_listeners():
     hotkey_listener = keyboard.GlobalHotKeys(hotkey_map)
     hotkey_listener.start()
     print(f"Hotkeys updated: Record={hotkeys['record']}, Play={hotkeys['play']}")
-    # Update info label
     info_label.config(text=f"Record Hotkey: {hotkeys['record'].upper()} | Play Hotkey: {hotkeys['play'].upper()}")
 
-# --- GUI Setup ---
 root = tk.Tk()
 root.title("Input Recorder")
-root.geometry("450x420") # Increased height for the new widget
+root.geometry("450x420") 
 root.resizable(False, False)
 root.configure(bg="#2E2E2E")
 
-# Fonts and Colors
 title_font = font.Font(family="Helvetica", size=16, weight="bold")
 button_font = font.Font(family="Helvetica", size=12)
 status_font = font.Font(family="Helvetica", size=10, slant="italic")
@@ -516,11 +461,9 @@ main_frame.pack(expand=True, fill=tk.BOTH)
 title_label = tk.Label(main_frame, text="Mouse & Keyboard Recorder", font=title_font, bg=BG_COLOR, fg=FG_COLOR)
 title_label.pack(pady=(0, 10))
 
-# Info Label
 info_label = tk.Label(main_frame, text="", font=status_font, bg=BG_COLOR, fg="#C0C0C0")
 info_label.pack(pady=(0,10))
 
-# --- Main Controls ---
 button_frame = tk.Frame(main_frame, bg=BG_COLOR)
 button_frame.pack(pady=5)
 record_button = tk.Button(button_frame, text="Record", command=start_recording, font=button_font, bg=BUTTON_BG, fg=BUTTON_FG, width=8, relief=tk.FLAT, padx=5, pady=5)
@@ -530,7 +473,6 @@ play_button.grid(row=0, column=1, padx=5)
 stop_button = tk.Button(button_frame, text="Stop", command=stop_action, state=tk.DISABLED, font=button_font, bg=ACCENT_COLOR, fg=BUTTON_FG, width=8, relief=tk.FLAT, padx=5, pady=5)
 stop_button.grid(row=0, column=2, padx=5)
 
-# --- File Operations ---
 file_frame = tk.Frame(main_frame, bg=BG_COLOR)
 file_frame.pack(pady=10)
 save_button = tk.Button(file_frame, text="Save", command=save_recording, state=tk.DISABLED, font=button_font, bg=BUTTON_BG, fg=BUTTON_FG, width=8, relief=tk.FLAT, padx=5, pady=5)
@@ -540,16 +482,13 @@ load_button.pack(side=tk.LEFT, padx=5)
 hotkey_button = tk.Button(file_frame, text="Hotkeys", command=open_hotkey_settings, font=button_font, bg=BUTTON_BG, fg=BUTTON_FG, width=8, relief=tk.FLAT, padx=5, pady=5)
 hotkey_button.pack(side=tk.LEFT, padx=5)
 
-# --- Playback Options ---
 options_frame = tk.Frame(main_frame, bg=BG_COLOR)
 options_frame.pack(pady=10, fill=tk.X)
 
-# Loop Checkbox
 loop_var = tk.BooleanVar()
 loop_checkbox = tk.Checkbutton(options_frame, text="Loop Playback", variable=loop_var, font=status_font, bg=BG_COLOR, fg=FG_COLOR, selectcolor=BG_COLOR, activebackground=BG_COLOR, activeforeground=FG_COLOR, borderwidth=0, highlightthickness=0)
 loop_checkbox.pack()
 
-# Speed Control Frame
 speed_frame = tk.Frame(options_frame, bg=BG_COLOR)
 speed_frame.pack(pady=(5,0))
 
@@ -558,32 +497,26 @@ speed_label_text.pack(side=tk.LEFT, padx=(0, 5))
 
 speed_multiplier = tk.IntVar(value=1)
 
-# Label to display the current speed value (e.g., "1x")
 speed_value_label = tk.Label(speed_frame, text=f"{speed_multiplier.get()}x", font=status_font, bg=BG_COLOR, fg=FG_COLOR, width=3, anchor='w')
 
-# Scale widget to select the speed
 speed_scale = tk.Scale(speed_frame, from_=1, to=10, orient=tk.HORIZONTAL, variable=speed_multiplier,
                        bg=BG_COLOR, fg=FG_COLOR, troughcolor=BUTTON_BG, highlightthickness=0, showvalue=0,
                        command=lambda val: speed_value_label.config(text=f"{int(val)}x"))
 speed_scale.pack(side=tk.LEFT)
 speed_value_label.pack(side=tk.LEFT, padx=(5, 0))
 
-
-# --- Status and Info ---
 status_label = tk.Label(main_frame, text="Ready. Press 'Record' or 'Load' to start.", font=status_font, bg=BG_COLOR, fg="#C0C0C0", wraplength=400)
 status_label.pack(pady=(10, 0), fill=tk.X)
 emergency_label = tk.Label(main_frame, text="Emergency Stop Hotkey: Ctrl+Shift+X", font=status_font, bg=BG_COLOR, fg="#FFA500")
 emergency_label.pack(side=tk.BOTTOM, pady=(10, 0))
 
-# --- Main Loop ---
 if __name__ == "__main__":
-    setup_icon() # Set the custom icon
-    # Set the action for closing the window (the 'X' button)
+    setup_icon()
     if TRAY_SUPPORTED:
         root.protocol('WM_DELETE_WINDOW', hide_window) 
     else:
         root.protocol('WM_DELETE_WINDOW', on_closing)
         
-    load_settings() # Load settings on startup
+    load_settings()
     update_hotkey_listeners()
     root.mainloop()
